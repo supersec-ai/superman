@@ -25,6 +25,28 @@ import type {
 
 const log = logger.child('App');
 
+const DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Parse a human-friendly byte size (e.g. '10mb', '512kb', '1gb') into
+ * bytes. A bare number is interpreted as bytes. Returns `undefined`
+ * when the value cannot be parsed so the caller can fall back to the
+ * framework default.
+ */
+const parseByteSize = (value: string): number | undefined => {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb|kib|mib|gib)?\s*$/i.exec(value);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  const unit = (match[2] || 'b').toLowerCase();
+  const mult: Record<string, number> = {
+    b: 1, kb: 1024, mb: 1024 * 1024, gb: 1024 * 1024 * 1024,
+    kib: 1024, mib: 1024 * 1024, gib: 1024 * 1024 * 1024,
+  };
+  const bytes = Math.floor(amount * mult[unit]);
+  return Number.isSafeInteger(bytes) ? bytes : undefined;
+};
+
 export interface SupermanAppOptions {
   port?: number;
   cors?: boolean;
@@ -57,7 +79,7 @@ interface RegisteredModuleSpec {
 
 export class SupermanApp {
   public readonly serverInstanceUid: string = SERVER_INSTANCE_UID;
-  private app: FastifyInstance;
+  private _fastify?: FastifyInstance;
   private options: SupermanAppOptions;
   private modules: { prefix: string; module: SupermanModule }[] = [];
   private moduleSpecs: RegisteredModuleSpec[] = [];
@@ -66,14 +88,32 @@ export class SupermanApp {
 
   constructor(options: SupermanAppOptions = {}) {
     this.options = options;
-    const jsonLimitStr = this.options.jsonLimit || '10mb';
-    const limitBytes = parseInt(jsonLimitStr) * 1024 * 1024 || 10485760;
-    
-    this.app = Fastify({ bodyLimit: limitBytes });
-    this.app.addHook('onSend', async (_request, reply) => {
-      reply.header('X-Powered-By', 'Superman');
-    });
-    this.app.register(requestInterceptorMiddleware);
+  }
+
+  /**
+   * Resolve the JSON body limit: an explicit constructor option wins,
+   * otherwise the value documented for `defineConfig({ jsonLimit })`.
+   * Suffix-aware parsing (`kb`/`mb`/`gb`); unparseable values fall back
+   * to the framework default rather than being silently misread.
+   */
+  private resolveBodyLimit(): number {
+    const jsonLimitStr =
+      this.options.jsonLimit ??
+      (config.isInitialized() ? config.jsonLimit : undefined) ??
+      '10mb';
+    return parseByteSize(jsonLimitStr) ?? DEFAULT_BODY_LIMIT_BYTES;
+  }
+
+  private get app(): FastifyInstance {
+    if (!this._fastify) {
+      const app = Fastify({ bodyLimit: this.resolveBodyLimit() });
+      app.addHook('onSend', async (_request, reply) => {
+        reply.header('X-Powered-By', 'Superman');
+      });
+      app.register(requestInterceptorMiddleware);
+      this._fastify = app;
+    }
+    return this._fastify;
   }
 
   private installSignalHandlers(): void {

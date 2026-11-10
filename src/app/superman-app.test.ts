@@ -1,4 +1,5 @@
 import { SupermanApp, SupermanExpressApp } from './superman-app';
+import { config } from '../config/superman-config';
 import { SupermanModule } from '../core/superman-module';
 
 describe('SupermanApp', () => {
@@ -118,6 +119,51 @@ describe('SupermanApp', () => {
     it('should export SupermanExpressApp as alias for SupermanApp', () => {
       // Assert
       expect(SupermanExpressApp).toBe(SupermanApp);
+    }, 1000);
+  });
+
+  describe('jsonLimit', () => {
+    beforeEach(() => config.reset());
+    afterEach(() => config.reset());
+
+    const bodyLimitOf = (app: SupermanApp): number =>
+      (app as unknown as { app: { initialConfig: { bodyLimit: number } } }).app.initialConfig.bodyLimit;
+
+    it.each([
+      ['512kb', 512 * 1024],
+      ['1kb', 1024],
+      ['1.5mb', Math.floor(1.5 * 1024 * 1024)],
+      ['10mb', 10 * 1024 * 1024],
+      ['1048576', 1048576],
+      ['bogus', 10 * 1024 * 1024],
+    ])('should parse %s into %i bytes', (jsonLimit, expected) => {
+      // Arrange / Act
+      const app = new SupermanApp({ jsonLimit });
+
+      // Assert
+      expect(bodyLimitOf(app)).toBe(expected);
+    }, 1000);
+
+    it('should honour defineConfig({ jsonLimit })', () => {
+      // Arrange
+      config.init({ jsonLimit: '2mb' });
+
+      // Act
+      const app = new SupermanApp();
+
+      // Assert
+      expect(bodyLimitOf(app)).toBe(2 * 1024 * 1024);
+    }, 1000);
+
+    it('should prefer the constructor option over defineConfig', () => {
+      // Arrange
+      config.init({ jsonLimit: '2mb' });
+
+      // Act
+      const app = new SupermanApp({ jsonLimit: '1mb' });
+
+      // Assert
+      expect(bodyLimitOf(app)).toBe(1024 * 1024);
     }, 1000);
   });
 });
