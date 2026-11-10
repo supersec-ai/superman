@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 
 import type { JsonRpcBody, McpClientIdentity } from './types';
+import { sanitizeLogValue } from './sanitize';
 
 /**
  * Extracts the best-effort identity of the MCP client that issued the request.
@@ -15,11 +16,11 @@ import type { JsonRpcBody, McpClientIdentity } from './types';
  * from `User-Agent` alone.
  */
 export const identifyMcpClient = (req: FastifyRequest, body: JsonRpcBody | undefined): McpClientIdentity => {
-  const userAgent = String(req.headers['user-agent'] ?? 'unknown');
-  const ip = String(req.ip ?? req.socket.remoteAddress ?? 'unknown');
+  const userAgent = sanitizeLogValue(req.headers['user-agent']);
+  const ip = sanitizeLogValue(req.ip ?? req.socket.remoteAddress);
   const clientInfo = body?.params?.clientInfo;
-  const inferredName = clientInfo?.name ?? userAgent.split('/')[0] ?? 'unknown';
+  const inferredName = sanitizeLogValue(clientInfo?.name ?? userAgent.split('/')[0]);
   const identity: McpClientIdentity = { name: inferredName, userAgent, ip };
-  if (clientInfo?.version) identity.version = clientInfo.version;
+  if (clientInfo?.version) identity.version = sanitizeLogValue(clientInfo.version);
   return identity;
 };

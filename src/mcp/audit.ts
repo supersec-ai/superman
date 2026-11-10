@@ -4,6 +4,7 @@ import { logger } from '../logger/superman-logger';
 import { AuditEvents, EventSeverity } from '../logger/superman-logger.types';
 
 import { identifyMcpClient } from './identity';
+import { sanitizeLogValue } from './sanitize';
 import type { JsonRpcBody } from './types';
 
 const log = logger.child('Mcp');
@@ -41,7 +42,7 @@ export const auditMcpRequest = (req: FastifyRequest): void => {
 
   if (body.method !== 'tools/call') return;
 
-  const toolName = body.params?.name ?? 'unknown';
+  const toolName = sanitizeLogValue(body.params?.name);
 
   log.events.audit({
     auditEvent: AuditEvents.MCP_TOOL_EXECUTED,
