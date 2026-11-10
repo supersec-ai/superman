@@ -42,6 +42,20 @@ const SEVERITY_RANK: Record<EventSeverity, number> = {
 
 const TRUNCATED_SUFFIX = 'â€¦[truncated]';
 
+// Credential-shaped keys that are masked on every event, regardless of the
+// consumer's `redactFields`. Normalized to lowercase alphanumerics and matched
+// exactly, so `accessToken`/`access_token`/`Access-Token` are caught while
+// `tokenCount`/`tokens` are left alone.
+const BUILT_IN_SENSITIVE_KEYS: ReadonlySet<string> = new Set([
+  'password', 'passwd', 'passphrase', 'secret', 'clientsecret',
+  'apikey', 'accesskey', 'secretkey', 'privatekey',
+  'accesstoken', 'refreshtoken', 'idtoken', 'authtoken', 'bearer',
+  'authorization', 'cookie', 'setcookie',
+  'sessionid', 'sessiontoken', 'csrftoken', 'credential',
+]);
+
+const normalizeKey = (key: string): string => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // Methods that produce an audit event. When AUDIT keeps its payload, the REQUEST
 // log retains its `requestBody` for these methods even if REQUEST.savePayload is
 // off — so the audited "what changed" stays recoverable via `requestId`.
@@ -106,6 +120,7 @@ export class LogEventEmitter {
     const full: FullLog = buildFullLog(this.options.context, eventType, partial, defaultSeverity);
 
     applyPayloadRules(full, eventType, cfg, this.shouldKeepRequestBodyForAudit(eventType, full));
+    applyBuiltInRedaction(full);
     if (cfg.redactFields.length > 0) applyRedaction(full, cfg.redactFields);
 
     for (const sink of this.options.sinks) {
@@ -198,6 +213,28 @@ const applyCaptureWhitelist = (value: unknown, keys: Set<string>): unknown => {
     }
   }
   return result;
+};
+
+const applyBuiltInRedaction = (log: FullLog): void => {
+  redactSensitiveKeys(log as unknown as Record<string, unknown>);
+};
+
+const redactSensitiveKeys = (obj: unknown): void => {
+  if (obj === null || typeof obj !== 'object') return;
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) redactSensitiveKeys(item);
+    return;
+  }
+
+  const record = obj as Record<string, unknown>;
+  for (const k of Object.keys(record)) {
+    if (BUILT_IN_SENSITIVE_KEYS.has(normalizeKey(k))) {
+      record[k] = '***';
+    } else {
+      redactSensitiveKeys(record[k]);
+    }
+  }
 };
 
 const applyRedaction = (log: FullLog, redactFields: readonly string[]): void => {

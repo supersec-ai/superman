@@ -589,4 +589,39 @@ describe('LogEventEmitter', () => {
     expect(log.metadata.authorization).toBe('***');
     expect(log.metadata.other).toBe('kept');
   });
+
+  it('should mask credential-like keys in payloads without consumer redactFields', () => {
+    // Arrange
+    const sink = makeSink();
+    const emitter = new LogEventEmitter({
+      sinks: [sink],
+      enabled: true,
+      configs: makeConfigs(makeConfig(EventType.REQUEST)),
+      context: 'Test',
+    });
+
+    // Act
+    emitter.request({
+      ip: '1.1.1.1',
+      requestId: 'r1',
+      method: 'POST',
+      url: '/login',
+      route: '/login',
+      bytesReceived: 0,
+      eventSeverity: EventSeverity.INFO,
+      requestBody: {
+        username: 'ada',
+        password: 'hunter2',
+        nested: { accessToken: 'abc', tokenCount: 42, tokens: 10 },
+      },
+    } as never);
+
+    // Assert
+    const log = sink.writes[0] as unknown as { requestBody: Record<string, never> };
+    expect(log.requestBody.username).toBe('ada');
+    expect(log.requestBody.password).toBe('***');
+    expect((log.requestBody.nested as Record<string, unknown>).accessToken).toBe('***');
+    expect((log.requestBody.nested as Record<string, unknown>).tokenCount).toBe(42);
+    expect((log.requestBody.nested as Record<string, unknown>).tokens).toBe(10);
+  });
 });
