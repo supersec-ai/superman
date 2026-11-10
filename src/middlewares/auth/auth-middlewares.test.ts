@@ -49,8 +49,24 @@ describe('auth middlewares', () => {
       // Act
       const err = await executeMw(mw, makeReq());
 
-      // Assert
+      // Assert - the verifier message stays server-side
       expect(err).toBeInstanceOf(UnauthorizedException);
+      expect((err as Error).message).toBe('Unauthorized');
+    }, 1000);
+
+    it('should preserve an UnauthorizedException message set by the verifier', async () => {
+      // Arrange
+      const mw = requireAuth({
+        scheme: 'bearerAuth',
+        verify: () => { throw new UnauthorizedException('Token expired'); },
+      });
+
+      // Act
+      const err = await executeMw(mw, makeReq());
+
+      // Assert - developer-authored messages pass through
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect((err as Error).message).toBe('Token expired');
     }, 1000);
 
     it('should fall back to the verifier registered in defineConfig', async () => {

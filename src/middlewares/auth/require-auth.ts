@@ -2,8 +2,11 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyMiddleware } from '../typed-handler';
 import { UnauthorizedException } from '../../exceptions/http.exception';
 import { config, type AuthVerifier, type Principal } from '../../config/superman-config';
+import { logger } from '../../logger/superman-logger';
 import { attachOpenApiMeta } from '../openapi-meta';
 import type { TypedHandler } from '../typed-handler';
+
+const log = logger.child('Auth');
 
 const AUTO_401 = {
   status: 401,
@@ -59,7 +62,13 @@ export const requireAuth = (schemeOrOpts: string | RequireAuthOptions): TypedHan
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      throw new UnauthorizedException((error as Error)?.message || 'Unauthorized');
+      // Verifier errors often embed internal detail (hostnames, driver/pool
+      // state). Keep it server-side and return a generic 401 body.
+      log.warn('Authentication verifier failed', {
+        scheme: opts.scheme,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new UnauthorizedException();
     }
   };
 
