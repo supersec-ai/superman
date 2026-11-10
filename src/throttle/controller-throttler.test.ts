@@ -150,4 +150,53 @@ describe('ControllerThrottler', () => {
       expect(result).toBe(3);
     }, 1000);
   });
+
+  describe('store bounds', () => {
+    it('should cap the number of tracked IPs', () => {
+      // Arrange
+      const throttler = new ControllerThrottler(makeConfig({ limit: 3, ttl: 60_000 }));
+
+      // Act
+      for (let i = 0; i < 20_000; i++) {
+        throttler.check(`10.0.${i >> 8}.${i & 255}`);
+      }
+
+      // Assert
+      const store = (throttler as unknown as { store: Map<string, unknown> }).store;
+      expect(store.size).toBe(10_000);
+    }, 5000);
+
+    it('should not evict entries for requests from an already tracked IP', () => {
+      // Arrange
+      const throttler = new ControllerThrottler(makeConfig({ limit: 3, ttl: 60_000 }));
+      for (let i = 0; i < 10_000; i++) {
+        throttler.check(`10.0.${i >> 8}.${i & 255}`);
+      }
+      const store = (throttler as unknown as { store: Map<string, unknown> }).store;
+      throttler.check('192.0.2.1');
+      const keysBefore = [...store.keys()];
+
+      // Act
+      throttler.check('192.0.2.1');
+
+      // Assert
+      expect([...store.keys()]).toEqual(keysBefore);
+    }, 5000);
+
+    it('should drop expired entries on the periodic sweep', () => {
+      // Arrange
+      const throttler = new ControllerThrottler(makeConfig({ limit: 3, ttl: 5_000 }));
+      throttler.check('10.0.0.1');
+      throttler.check('10.0.0.2');
+      const store = (throttler as unknown as { store: Map<string, unknown> }).store;
+
+      // Act
+      jest.advanceTimersByTime(60_001);
+      throttler.check('10.0.0.3');
+
+      // Assert
+      expect(store.size).toBe(1);
+      expect(store.has('10.0.0.3')).toBe(true);
+    }, 5000);
+  });
 });

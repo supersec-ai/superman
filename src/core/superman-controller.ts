@@ -329,6 +329,14 @@ const RESERVED_CONTEXT_KEYS: ReadonlySet<string> = new Set([
   'body', 'query', 'params', 'headers', 'cookies', 'user',
 ]);
 
+// Own keys that must never be copied onto the context object - copying
+// '__proto__' invokes the inherited prototype setter on the plain-object
+// context (per-request prototype pollution). 'constructor' and 'prototype'
+// are shadowed to neutral values by the same guard.
+const UNSAFE_OWN_KEYS: ReadonlySet<string> = new Set([
+  '__proto__', 'constructor', 'prototype',
+]);
+
 const buildContext = (req: FastifyRequest, res: FastifyReply, service: unknown): Record<string, unknown> => {
   const ctx: Record<string, unknown> = {
     req,
@@ -349,7 +357,7 @@ const buildContext = (req: FastifyRequest, res: FastifyReply, service: unknown):
   for (const src of sources) {
     if (src && typeof src === 'object') {
       for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
-        if (!RESERVED_CONTEXT_KEYS.has(k)) ctx[k] = v;
+        if (!RESERVED_CONTEXT_KEYS.has(k) && !UNSAFE_OWN_KEYS.has(k)) ctx[k] = v;
       }
     }
   }

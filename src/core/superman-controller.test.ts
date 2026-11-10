@@ -526,6 +526,24 @@ describe('SupermanController', () => {
       // Assert
       expect(captured.ctx?.page).toBe('from-body');
     }, 1000);
+
+    it('should ignore prototype-polluting own keys from a parsed body', async () => {
+      // Arrange
+      const captured: { ctx?: Record<string, unknown> } = {};
+      const controller = new SupermanController(captureCtx(captured) as unknown as (ctx: unknown) => unknown);
+      const body = JSON.parse('{"__proto__":{"polluted":true},"constructor":"evil","ok":1}');
+      const req = makeReq({ body } as Partial<FastifyRequest>);
+
+      // Act
+      await controller.handler(req, makeRes());
+
+      // Assert
+      expect(captured.ctx?.ok).toBe(1);
+      expect(Object.prototype.hasOwnProperty.call(captured.ctx, '__proto__')).toBe(false);
+      expect((captured.ctx as Record<string, unknown>).polluted).toBeUndefined();
+      expect(typeof captured.ctx?.constructor).toBe('function');
+      expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    }, 1000);
   });
 });
 
