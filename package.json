@@ -52,8 +52,8 @@
     "dist"
   ],
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": ">=1.29.0",
-    "fastify": "^5.8.5"
+    "@modelcontextprotocol/sdk": ">=1.32.0",
+    "fastify": "^5.12.5"
   },
   "peerDependenciesMeta": {
     "@modelcontextprotocol/sdk": {
@@ -61,10 +61,10 @@
     }
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
-    "fastify": "^5.8.5",
+    "fastify": "^5.12.8",
     "jest": "^30.3.0",
     "mermaid": "^10.9.3",
     "pngjs": "^7.0.0",
@@ -77,5 +77,11 @@
   },
   "dependencies": {
     "fastify-plugin": "^5.1.0"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.9",
+    "find-my-way": "^9.7.0",
+    "proxy-addr": "^2.0.8",
+    "handlebars": "^4.7.10"
   }
 }
