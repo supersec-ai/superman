@@ -12,10 +12,14 @@
  *   Object      : properties, required, additionalProperties (boolean),
  *                 minProperties, maxProperties
  *
- * Explicitly NOT supported in v1 (callers needing these should plug in a
- * full validator via `defineConfig({ schemaValidator })`):
- *   $ref / $defs, patternProperties, dependentRequired, contentMediaType,
- *   if/then/else.
+ * Explicitly NOT supported in v1 (such a schema is rejected rather than
+ * silently accepted; callers needing these should plug in a full validator
+ * via `defineConfig({ schemaValidator })`):
+ *   $ref / $defs, patternProperties, prefixItems, propertyNames,
+ *   dependentSchemas, contains, dependentRequired, dependencies,
+ *   unevaluatedProperties, unevaluatedItems, additionalItems,
+ *   contentMediaType, if/then/else, tuple-form `items`, schema-form
+ *   `additionalProperties`.
  */
 
 import type { JsonSchema } from '../core/superman-controller';
@@ -67,6 +71,67 @@ const TYPE_OF: Record<string, (v: unknown) => boolean> = {
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Unsupported keywords are rejected loudly instead of being ignored silently:
+ * a schema that carries one can never be fully enforced by this validator, so
+ * accepting data against it would fail open. Callers needing any of these
+ * must plug in a full validator via `defineConfig({ schemaValidator })`.
+ */
+const UNSUPPORTED_KEYWORDS = [
+  '$ref',
+  '$defs',
+  'patternProperties',
+  'prefixItems',
+  'propertyNames',
+  'dependentSchemas',
+  'contains',
+  'dependentRequired',
+  'dependencies',
+  'unevaluatedProperties',
+  'unevaluatedItems',
+  'additionalItems',
+  'if',
+  'then',
+  // `else` is only meaningful alongside `if`, which is reported separately.
+  'else',
+  'contentMediaType',
+] as const;
+
+const checkUnsupportedKeywords = (
+  schema: JsonSchema,
+  path: string,
+  errors: ValidationError[],
+): void => {
+  for (const keyword of UNSUPPORTED_KEYWORDS) {
+    if (keyword in schema) {
+      errors.push({
+        path,
+        keyword,
+        message: `Unsupported schema keyword "${keyword}"; the built-in validator cannot enforce it. Use defineConfig({ schemaValidator }) with a full JSON Schema implementation.`,
+      });
+    }
+  }
+  // `items` is only enforced when given a single schema object; the
+  // tuple-array form (and 2020-12 `prefixItems`) silently implies a tuple
+  // constraint that this validator does not implement.
+  if (Array.isArray(schema.items)) {
+    errors.push({
+      path,
+      keyword: 'items',
+      message: 'Unsupported schema keyword "items" (tuple form); the built-in validator cannot enforce a tuple constraint. Use defineConfig({ schemaValidator }) with a full JSON Schema implementation.',
+    });
+  }
+  // `additionalProperties` given a schema (rather than boolean) constrains
+  // unknown properties with a subschema that this validator does not apply.
+  if (isPlainObject(schema.additionalProperties)) {
+    errors.push({
+      path,
+      keyword: 'additionalProperties',
+      message: 'Unsupported schema keyword "additionalProperties" (schema form); the built-in validator only enforces the boolean form. Use defineConfig({ schemaValidator }) with a full JSON Schema implementation.',
+    });
+  }
+};
 
 const asArray = <T>(v: T | ReadonlyArray<T> | undefined): ReadonlyArray<T> => {
   if (v === undefined) return [];
@@ -349,7 +414,16 @@ const checkCombinators = (
   const notSchema = schema.not as JsonSchema | undefined;
   if (isPlainObject(notSchema)) {
     const result = tryBranch(current, notSchema, options);
-    if (result.valid) {
+    const unenforceable = result.errors.some((branchError) =>
+      (UNSUPPORTED_KEYWORDS as readonly string[]).includes(branchError.keyword),
+    );
+    if (unenforceable) {
+      errors.push({
+        path,
+        keyword: 'not',
+        message: 'Not-schema uses unsupported keywords and cannot be enforced by the built-in validator. Use defineConfig({ schemaValidator }) with a full JSON Schema implementation.',
+      });
+    } else if (result.valid) {
       errors.push({ path, keyword: 'not', message: 'Value must not match the schema.' });
     }
   }
@@ -366,6 +440,7 @@ const validateRecursive = (
 ): unknown => {
   let value = options.coerce ? coerceValue(rawValue, schema) : rawValue;
 
+  checkUnsupportedKeywords(schema, path, errors);
   checkType(value, schema, path, errors);
   checkEnum(value, schema, path, errors);
   checkConst(value, schema, path, errors);

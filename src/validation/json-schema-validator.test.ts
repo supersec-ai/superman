@@ -236,4 +236,69 @@ describe('validateJsonSchema', () => {
       expect(r.valid).toBe(false);
     }, 1000);
   });
+
+  describe('unsupported keywords', () => {
+    const cases: Array<[string, Record<string, unknown>, unknown]> = [
+      ['$ref', { $ref: '#/$defs/role' }, 'superadmin'],
+      ['$defs', { $defs: { role: { type: 'string' } }, type: 'string' }, 'x'],
+      ['patternProperties', { type: 'object', patternProperties: { '^x': { type: 'number' } } }, { x1: 'nope' }],
+      ['propertyNames', { type: 'object', propertyNames: { pattern: '^[a-z]+$' } }, { A: 1 }],
+      ['dependentRequired', { type: 'object', dependentRequired: { a: ['b'] } }, { a: 1 }],
+      ['dependentSchemas', { type: 'object', dependentSchemas: { a: { required: ['b'] } } }, { a: 1 }],
+      ['dependencies', { type: 'object', dependencies: { a: ['b'] } }, { a: 1 }],
+      ['contains', { type: 'array', contains: { type: 'number' } }, ['a']],
+      ['unevaluatedProperties', { type: 'object', unevaluatedProperties: false }, { a: 1 }],
+      ['unevaluatedItems', { type: 'array', unevaluatedItems: false }, [1]],
+      ['additionalItems', { type: 'array', items: { type: 'number' }, additionalItems: false }, [1, 2]],
+      ['if/then/else', { type: 'string', if: { const: 'a' }, then: { maxLength: 1 }, else: { minLength: 5 } }, 'bb'],
+      ['contentMediaType', { type: 'string', contentMediaType: 'application/json' }, 'x'],
+      ['prefixItems', { type: 'array', prefixItems: [{ type: 'number' }] }, [1]],
+      ['tuple items', { type: 'array', items: [{ type: 'number' }] }, [1]],
+      ['schema additionalProperties', { type: 'object', additionalProperties: { type: 'number' } }, { a: 'x' }],
+    ];
+
+    it.each(cases)('should reject a schema using %s', (_name, schema, value) => {
+      // Arrange / Act
+      const r = validateJsonSchema(value, schema as never);
+
+      // Assert
+      expect(r.valid).toBe(false);
+      expect(r.errors.some((e) => e.message.startsWith('Unsupported schema keyword'))).toBe(true);
+    }, 1000);
+
+    it('should reject an unsupported keyword in a nested property', () => {
+      // Arrange / Act
+      const r = validateJsonSchema(
+        { role: 'superadmin' },
+        { type: 'object', properties: { role: { $ref: '#/$defs/role' } } } as never,
+      );
+
+      // Assert
+      expect(r.valid).toBe(false);
+      expect(r.errors[0].path).toBe('/role');
+    }, 1000);
+
+    it('should reject an unenforceable not-schema', () => {
+      // Arrange / Act
+      const r = validateJsonSchema('x', { not: { $ref: '#/$defs/forbidden' } } as never);
+
+      // Assert
+      expect(r.valid).toBe(false);
+      expect(r.errors[0].keyword).toBe('not');
+    }, 1000);
+
+    it('should still accept annotation-only keywords', () => {
+      // Arrange / Act
+      const r = validateJsonSchema('x', {
+        type: 'string',
+        title: 'Name',
+        description: 'A name',
+        examples: ['x'],
+        default: 'x',
+      } as never);
+
+      // Assert
+      expect(r.valid).toBe(true);
+    }, 1000);
+  });
 });
