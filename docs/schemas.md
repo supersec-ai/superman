@@ -110,15 +110,21 @@ The built-in validator ([`src/validation/json-schema-validator.ts`](../src/valid
 | **Array** | `items` (single schema), `minItems`, `maxItems`, `uniqueItems` |
 | **Object** | `properties`, `required`, `additionalProperties` (boolean), `minProperties`, `maxProperties` |
 
-**Not supported in v1** (ignored at runtime; still rendered in the OpenAPI output since they're valid spec annotations):
+**Not supported in v1** (rejected at validation time; still rendered in the OpenAPI output since they are valid spec annotations):
 
 - `$ref` / `$defs` (no reference resolution)
-- `patternProperties`
-- `dependentRequired` / `dependentSchemas`
-- `contentMediaType` / `contentEncoding`
+- `patternProperties`, `propertyNames`
+- `dependentRequired` / `dependentSchemas` / `dependencies`
+- `unevaluatedProperties` / `unevaluatedItems`
+- `contains`
+- `prefixItems`, `additionalItems`, tuple-form `items`
+- schema-form `additionalProperties`
+- `contentMediaType`
 - `if` / `then` / `else`
 
-If you need any of these, plug a full validator into the `schemaValidator` hook — see [Replacing the validator](#replacing-the-validator).
+A schema that uses any of these fails validation with an `Unsupported schema keyword` error instead of being partially enforced. Annotation-only keywords such as `title`, `description`, `examples`, `default`, and `contentEncoding` are ignored, as the specification allows.
+
+If you need any of the rejected keywords, plug a full validator into the `schemaValidator` hook — see [Replacing the validator](#replacing-the-validator).
 
 ## Coercion
 
